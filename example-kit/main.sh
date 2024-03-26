@@ -26,7 +26,8 @@ error() {
     echo "Error on or near line ${parent_lineno}; exiting with status ${code}"
   fi
   # cat /tmp/ef
-  echo "PLEASE REPORT THIS BUG, WITH ALL INFORMATION ON THE SCREEN PRESENT IN THE REPORT (https://github.com/MercuryWorkshop/RecoMod)"
+  echo "PLEASE REPORT THIS BUG, WITH ALL INFORMATION ON THE SCREEN PRESENT IN THE REPORT (https://github.com/DoxrGitHub/ShimmerMod)"
+  echo "dont expect me to fix this since im dumb... but chances are that its your fault :)"
   sleep 1
   read -p "PRESS RETURN TO CONTINUE" e
 }
@@ -432,140 +433,175 @@ boot_halcyon(){
   fi
 }
 
+get_largest_nvme_namespace() {
+    local largest size tmp_size dev
+    size=0
+    dev=$(basename "$1")
+
+    for nvme in /sys/block/"${dev%n*}"*; do
+        tmp_size=$(cat "${nvme}"/size)
+        if [ "${tmp_size}" -gt "${size}" ]; then
+            largest="${nvme##*/}"
+            size="${tmp_size}"
+        fi
+    done
+    echo "${largest}"
+}
+
+unblock_devmode() {
+	message "Unblocking devmode..."
+	vpd -i RW_VPD -s block_devmode=0
+	crossystem block_devmode=0
+	local res
+	res=$(cryptohome --action=get_firmware_management_parameters 2>&1)
+	if [ $? -eq 0 ] && ! echo "$res" | grep -q "Unknown action"; then
+		tpm_manager_client take_ownership
+		cryptohome --action=remove_firmware_management_parameters
+	fi
+}
+
+enable_usb_boot() {
+	message "Enabling USB/altfw boot"
+	crossystem dev_boot_usb=1
+	crossystem dev_boot_legacy=1 || :
+	crossystem dev_boot_altfw=1 || :
+}
+
+reset_gbb_flags() {
+	message "Resetting GBB flags... This will only work if WP is disabled"
+	/usr/share/vboot/bin/set_gbb_flags.sh 0x0
+}
+
+wp_disable() {
+	while :; do
+		if flashrom --wp-disable; then
+			message -e "${COLOR_GREEN_B}Success. Note that some devices may need to reboot before the chip is fully writable.${COLOR_RESET}"
+			return 0
+		fi
+		message -e "${COLOR_RED_B}Press SHIFT+Q to cancel.${COLOR_RESET}"
+		if [ "$(poll_key)" = "Q" ]; then
+			printf "\nCanceled\n"
+			return 1
+		fi
+		sleep 1
+	done
+}
+
+get_largest_cros_blockdev() {
+	local largest size dev_name tmp_size remo
+	size=0
+	for blockdev in /sys/block/*; do
+		dev_name="${blockdev##*/}"
+		echo "$dev_name" | grep -q '^\(loop\|ram\)' && continue
+		tmp_size=$(cat "$blockdev"/size)
+		remo=$(cat "$blockdev"/removable)
+		if [ "$tmp_size" -gt "$size" ] && [ "${remo:-0}" -eq 0 ]; then
+			case "$(sfdisk -l -o name "/dev/$dev_name" 2>/dev/null)" in
+				*STATE*KERN-A*ROOT-A*KERN-B*ROOT-B*)
+					largest="/dev/$dev_name"
+					size="$tmp_size"
+					;;
+			esac
+		fi
+	done
+	echo "$largest"
+}
+
+
+touch_developer_mode() {
+	local cros_dev="$(get_largest_cros_blockdev)"
+	if [ -z "$cros_dev" ]; then
+		message "No CrOS SSD found on device!"
+		return 1
+	fi
+	message "This will bypass the 5 minute developer mode delay on ${cros_dev}"
+	# Removed user confirmation prompt
+	local stateful=$(format_part_number "$cros_dev" 1)
+	local stateful_mnt=$(mktemp -d)
+	mount "$stateful" "$stateful_mnt"
+	touch "$stateful_mnt/.developer_mode"
+	umount "$stateful_mnt"
+	rmdir "$stateful_mnt"
+}
+
+disable_verity() {
+	local cros_dev="$(get_largest_cros_blockdev)"
+	if [ -z "$cros_dev" ]; then
+		message "No CrOS SSD found on device!"
+		return 1
+	fi
+	message "READ: don't exit dev mode after this, or you'll have to recover completely."
+	# Removed sleep command and user confirmation prompt
+	/usr/share/vboot/bin/make_dev_ssd.sh -i "$cros_dev" --remove_rootfs_verification
+}
+
+cryptosmite() {
+	/usr/sbin/cryptosmite_sh1mmer.sh
+}
+
+reboot() {
+  sync
+  $USB_MNT/usr/sbin/clamide --syscall reboot int:0xfee1dead int:672274793 int:0x1234567
+  tail -f /dev/null
+}
+
 main() {
   traps
   mkdir /mmcmnt || :
 
   find_mmcdevs
-
+  # I didn't want to screw around with what existed
   while true; do
     pick "Choose action" \
-      "Chroot bash shell (make modifications to the system)" \
-      "Initramfs busybox sh (debugging purposes)" \
-      "Reset system" \
-      "Recover system" \
-      "Edit GBB flags" \
-      "Edit Crossytem variables" \
-      "Edit VPD data" \
-      "Configure Custom Firmware" \
-      "Activate halcyon environment" \
-      "Reboot"
+      "1. Bash shell" \
+      "2. Deprovision device" \
+      "3. Reprovision device" \
+      "4. Unblock devmode" \
+      "5. Enable USB/altfw boot" \
+      "6. Reset GBB flags (in case of an accidental bootloop) WP MUST BE DISABLED" \
+      "7. WP disable loop (for pencil method)" \
+      "8. Touch .developer_mode (skip 5 minute delay)" \
+      "9. Remove rootfs verification" \
+      "10. Cryptosmite" \
+      "11. Call chromeos-tpm-recovery" \
+      "12. Exit and reboot" \
 
     case $CHOICE in
     1)
+    # orig will work here.
       pick_chroot_dest
       pick_parenting_type
       spawn_shell
       ;;
     2)
-      CHROOT=
-      pick_parenting_type
-      spawn_shell
+      vpd -i RW_VPD -s check_enrollment=0
+	    unblock_devmode
       ;;
     3)
-      powerwash
+      vpd -i RW_VPD -s check_enrollment=1
       ;;
     4)
-      if [ -f "$KIT/stripped" ]; then
-        message "Cannot recover system, --strip was enabled while building this image"
-      else
-        message "Starting Recovery"
-        clear
-        asusb chromeos-recovery.old "$USBDEV"
-        message "Recovery Complete"
-      fi
+      unblock_devmode
       ;;
-    5) edit_gbb ;;
-    6) edit_crossystem ;;
-    7) edit_vpd ;;
-    8) 
-      pick "Choose the type of firmware to install" \
-        "MrChromebox RW_LEGACY" \
-        "MrChromebox UEFI Full ROM (WP MUST BE DISABLED)"
-      case "$CHOICE" in
-        1)
-          if [ -f "$KIT/rw_legacy_enabled" ]; then
-            install_rw_legacy
-          else
-            message "Cannot install rw_legacy, --rw_legacy was not enabled when building this image"
-          fi
-          ;;
-        2) 
-          if [ -f "$KIT/fullrom_enabled" ]; then
-            install_fullrom
-          else
-            message "Cannot install fullrom, --fullrom was not enabled when building this image"
-          fi
-          ;;
-      esac
-      ;;
-    9)
-      if [ -f "$KIT/halcyon_enabled" ]; then
-        pick "Choose action" \
-          "Boot halcyon (tethered, usb must stay in always)" \
-          "Install halcyon semi-tethered (do once before booting semi-tethered)" \
-          "Boot halcyon (semi-tethered, usb must stay in during boot, can be removed after)"
+    5) enable_usb_boot ;;
+    6) reset_gbb_flags ;;
+    7) wp_disable ;;
+    8) touch_developer_mode ;;
+    9) disable_verity ;;
+    10) cryptosmite ;;
+    11) chromeos-tpm-recovery ;;
+    12) reboot ;;
 
-        case "$CHOICE" in
-          1)
-            HALCYON_STATEDEV=$STATEDEV
-            HALCYON_MNT=$USB_MNT
-            boot_halcyon
-            ;;
-          2) 
-            message "Installing halcyon from $USBROOTDEV to $ROOTADEV. This may take a while"
-            echo -en "\n\n\n"
-
-            # curiously i have to specify the full path?
-            dd if=$USBROOTDEV status=none | (asusb /usr/sbin/pv) | dd of=$ROOTADEV status=none
-            
-            message "Installing devmode kernels to $BDEV. This may take a while"
-            echo -en "\n\n\n"
-
-
-            # here we install the recovery kernel too
-            # we don't intend on booting from it but this will trip `verify_install_kernel` in recovery_init.sh
-            # bypassing the 5 minute wait as long as verity was disabled when building the image
-            USBDEV_WITH_SUFFIX=$(echo $USBROOTDEV | sed "s/.$//")
-            dd if=${USBDEV_WITH_SUFFIX} status=none | (asusb /usr/sbin/pv) | dd of=${BDEV}p2 status=none
-            dd if=${USBDEV_WITH_SUFFIX} status=none | (asusb /usr/sbin/pv) | dd of=${BDEV}p4 status=none
-
-            message "Halcyon sucessfully installed"
-            ;;
-          3) 
-            mount ${ROOTADEV} /mmcmnt || mount -o ro ${ROOTADEV} /mmcmnt
-            HALCYON_STATEDEV=$STATEDEV
-            HALCYON_MNT=/mmcmnt
-            (
-              # steal the newroot remounting from the initramfs code instead of writing it ourselves.
-              # this will bindmount /proc, /sys, and /dev on /mmcmnt and create the needed tmpfses
-              # as usual, do all sourcing inside a subshell
-
-              . /init
-              . /lib/recovery_init.sh
-              USB_MNT=/mmcmnt
-              NEWROOT_MNT=/mmcmnt
-              setup_install_mounts
-              # the odd part is that switch_root is supposed to do this for me? i guess busybox cheaped out
-            )
-            boot_halcyon
-            ;;
-        esac
-
-      else
-        message "Cannot activate halcyon, --halcyon was not passed when building this image"
-      fi
-      ;;
-    10)
-      # busybox reboot doesn't work for some fucking reason, so we do it the old fashioned way
-      sync
-      $USB_MNT/usr/sbin/clamide --syscall reboot int:0xfee1dead int:672274793 int:0x1234567
-      tail -f /dev/null
-      ;;
     esac
   done
 
 }
+
+#     10)
+#      sync
+#      $USB_MNT/usr/sbin/clamide --syscall reboot int:0xfee1dead int:672274793 int:0x1234567
+#      tail -f /dev/null
+#      ;;
 
 if [ "$0" = "$BASH_SOURCE" ]; then
   main
