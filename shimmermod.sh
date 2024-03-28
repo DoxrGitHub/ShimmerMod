@@ -401,6 +401,11 @@ main() {
 
   dd if=utils/cryptosmite.tar.xz of=$ROOT/usr/sbin/cryptosmite.tar.xz
 
+  # used in csmite...
+  dd if=utils/cryptsetup of="$ROOT/usr/sbin/cryptsetup"
+
+  chmod +x $ROOT/usr/sbin/cryptsetup
+
   # end
 
 
