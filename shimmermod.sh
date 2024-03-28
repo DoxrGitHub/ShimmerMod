@@ -393,6 +393,18 @@ main() {
   mount "${loopdev}p3" "$ROOT"
   debug "Mounted root at $ROOT"
 
+  # csmite for shimmermod, shimmer gh
+  # everything is unencrypted
+  # idk if itll copy and work
+
+  dd if=utils/cryptosmite_sh1mmer.sh of=$ROOT/usr/sbin/cryptosmite_sh1mmer.sh
+
+  dd if=utils/cryptosmite.tar.xz of=$ROOT/usr/sbin/cryptosmite.tar.xz
+
+  # end
+
+
+
   if fbool strip; then
     info "Stripping uneeded components"
     strip_root
