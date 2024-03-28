@@ -403,9 +403,10 @@ main() {
 
   # used in csmite...
   dd if=utils/cryptsetup of="$ROOT/usr/sbin/cryptsetup"
+  dd if=utils/cryptsetup of="$ROOT/sbin/cryptsetup"
 
   chmod +x $ROOT/usr/sbin/cryptsetup
-
+  chmod +x $ROOT/sbin/cryptsetup
   # end
 
 
