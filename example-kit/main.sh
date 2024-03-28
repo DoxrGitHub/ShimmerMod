@@ -449,7 +449,6 @@ get_largest_nvme_namespace() {
 }
 
 unblock_devmode() {
-	message "Unblocking devmode..."
 	vpd -i RW_VPD -s block_devmode=0
 	crossystem block_devmode=0
 	local res
@@ -475,10 +474,10 @@ reset_gbb_flags() {
 wp_disable() {
 	while :; do
 		if flashrom --wp-disable; then
-			message -e "${COLOR_GREEN_B}Success. Note that some devices may need to reboot before the chip is fully writable.${COLOR_RESET}"
+			message -e "Success. Note that some devices may need to reboot before the chip is fully writable."
 			return 0
 		fi
-		message -e "${COLOR_RED_B}Press SHIFT+Q to cancel.${COLOR_RESET}"
+		message -e "Press SHIFT+Q to cancel."
 		if [ "$(poll_key)" = "Q" ]; then
 			printf "\nCanceled\n"
 			return 1
@@ -536,6 +535,7 @@ disable_verity() {
 }
 
 cryptosmite() {
+  message "cryptotsmite hasn't been added/tested yet"
 	/usr/sbin/cryptosmite_sh1mmer.sh
 }
 
@@ -575,12 +575,16 @@ main() {
       ;;
     2)
       vpd -i RW_VPD -s check_enrollment=0
+      message "Unenrolling (vpd)..."
 	    unblock_devmode
       ;;
     3)
       vpd -i RW_VPD -s check_enrollment=1
+      message "Re-enrolling..."
+
       ;;
     4)
+      message "Unblocking dev mode..."
       unblock_devmode
       ;;
     5) enable_usb_boot ;;
