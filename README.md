@@ -30,9 +30,9 @@ If using the former, a R107 image is known to be most stable.
 
 Unzip the file you downloaded and now actually build the image.
 ```
-./shimmermod.sh -i /path/to/recovery/image.bin #[optional flags]
+sudo bash shimmermod.sh -i /path/to/recovery/image.bin #[optional flags]
 ```
-(run ./recomod.sh --help for a list of all build flags)
+(run `bash shimmermod.sh --help` for a list of all build flags)
 
 The script modifies the image in place, and once that's done, you can flash it with any USB flashing tool and plug it in your chromebook/box the same way you would a normal recovery image.
 
@@ -41,7 +41,8 @@ note for wsl users: ensure the image you want to modify is in your wsl (not wind
 
 additional tip: you're going to have to wait 5 minutes before the menu loads due to a ChromeOS restriction, **UNLESS** you have rootfs verification disabled on both partitions, so do that before using it.
 
-original work by mercury workshop
-
-
-silly edits by doxr
+>cred:
+>
+>original work by mercury workshop, some utilities by fwsmasher
+>
+>silly edits by doxr

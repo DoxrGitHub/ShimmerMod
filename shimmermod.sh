@@ -71,8 +71,8 @@ configure_binaries() {
     quit "cgpt binary not found! You must install cgpt. On debian/ubuntu, run sudo apt install cgpt" 1
   fi
 
-    if ! suppress which gparted; then
-    quit "gparted binary not found! You must install gparted. On debian/ubuntu, run sudo apt install gparted" 1
+    if ! suppress which parted; then
+    quit "parted binary not found! You must install parted. On debian/ubuntu, run sudo apt install parted" 1
   fi
   
   if ! suppress which futility; then
@@ -158,16 +158,16 @@ getopts() {
   DEFINE_boolean cleanup "$FLAGS_TRUE" \
     "clean up gracefully after the script finishes. disable this for debugging purposes" ""
 
-  DEFINE_boolean rw_legacy "$FLAGS_TRUE" \
+  DEFINE_boolean rw_legacy "$FLAGS_FALSE" \
     "download files from mrchromebox.tech for use in the rw_legacy firmware configuration menu" ""
   DEFINE_boolean fullrom "$FLAGS_FALSE" \
     "download files from mrchromebox.tech for use in the full uefi rom firmware configuration menu. This will take up a lot of space, only do this if you know you need it." ""
 
 
-  DEFINE_boolean strip "$FLAGS_FALSE" \
+  DEFINE_boolean strip "$FLAGS_TRUE" \
     "reduce the size of the recovery image by deleting everything that isn't neccessary. The image will no longer be able to recover chrome os" ""
   DEFINE_boolean halcyon "$FLAGS_FALSE" \
-    "enable E-HALCYON patches. if you don't know what that means, leave this option alone" ""
+    "enable E-HALCYON patches (you won't be able to use it through shimmermod, don't bother)" ""
 
   FLAGS "$@" || leave $?
   eval set -- "$FLAGS_ARGV"
@@ -285,7 +285,7 @@ strip_root() {
   rm -rf "$ROOT/usr/lib64/dri"
   rm -rf "$ROOT/usr/lib64/samba"
 
-  rm -rf "$ROOT/usr/share/vim" # :D
+  # rm -rf "$ROOT/usr/share/vim"
   rm -rf "$ROOT/usr/share/cros-camera"
   rm -rf "$ROOT/usr/share/X11"
 
@@ -295,7 +295,7 @@ strip_root() {
   >"$ROOT/usr/stripped"
 }
 shrink_table() {
-  local buffer=5000000 #5mb buffer. keeps things from breaking too much
+  local buffer=15000000 #15mb buffer. keeps things from breaking too much
 
   suppress e2fsck -fy "${loopdev}p3"
   suppress resize2fs -M "${loopdev}p3"
@@ -382,14 +382,12 @@ main() {
   local loopdev
   loopdev=$(losetup -f)
 
-  # add some space...
+  # add some space... 50mb to partition 3
   
-  third_partition=$(parted -s $loopdev unit B print | grep '^ 3' | awk '{print $2}')
-  new_size=$(($third_partition + 70*1024*1024))
-  parted -s $loopdev resizepart 3 $new_size
-  
+
+
   # end
-  
+
   losetup -P "$loopdev" "$bin"
   debug "Setup loopback at $loopdev"
 
