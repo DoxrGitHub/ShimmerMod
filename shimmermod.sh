@@ -70,6 +70,10 @@ configure_binaries() {
   if ! suppress which cgpt; then
     quit "cgpt binary not found! You must install cgpt. On debian/ubuntu, run sudo apt install cgpt" 1
   fi
+
+    if ! suppress which gparted; then
+    quit "gparted binary not found! You must install gparted. On debian/ubuntu, run sudo apt install gparted" 1
+  fi
   
   if ! suppress which futility; then
     quit "futility binary not found! You must install vboot-utils. On debian/ubuntu, run sudo apt install vboot-kernel-utils and on arch the package is vboot-utils from the AUR" 1
@@ -377,6 +381,15 @@ main() {
   info "Creating loopback device"
   local loopdev
   loopdev=$(losetup -f)
+
+  # add some space...
+  
+  third_partition=$(parted -s $loopdev unit B print | grep '^ 3' | awk '{print $2}')
+  new_size=$(($third_partition + 70*1024*1024))
+  parted -s $loopdev resizepart 3 $new_size
+  
+  # end
+  
   losetup -P "$loopdev" "$bin"
   debug "Setup loopback at $loopdev"
 
